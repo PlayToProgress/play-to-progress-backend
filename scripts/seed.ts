@@ -72,14 +72,6 @@ async function wipe() {
   }
 }
 
-// Forces every collection's actual indexes in MongoDB to match exactly what
-// each schema declares — dropping anything not declared (e.g. a stale
-// unique index left over from an earlier iteration of a schema, or from an
-// unrelated collection that happened to share this database) and building
-// anything that's missing. deleteMany() in wipe() only clears documents, it
-// never touches indexes, so a rogue leftover index would otherwise survive
-// every re-seed and keep breaking inserts (e.g. E11000 duplicate key errors
-// on a field like "bookingId" that no current schema even defines).
 async function syncAllIndexes() {
   const models: mongoose.Model<any>[] = [
     UserModel,
@@ -99,8 +91,6 @@ async function syncAllIndexes() {
   }
 }
 
-// Mirrors GamificationService.awardStampForAttendance without needing a full
-// Nest app context — the seed script talks to Mongoose directly.
 async function awardStamp(
   participantId: mongoose.Types.ObjectId,
   cohortId: mongoose.Types.ObjectId,
@@ -163,11 +153,6 @@ async function seed() {
   });
   console.log('Created super admin:', adminUser.email);
 
-  // In the real app the coordinator below would be created BY the super
-  // admin via POST /api/users (that's the whole point of the admin role —
-  // bootstrapping the first coordinator). The seed script creates it
-  // directly for demo convenience, but the relationship is the same one
-  // the UI enforces: only an admin account can mint a coordinator account.
   const coordinatorUser = await UserModel.create({
     name: 'Amara Okafor',
     email: 'coordinator@profitandplay.org',
