@@ -72,14 +72,6 @@ async function wipe() {
   }
 }
 
-// Forces every collection's actual indexes in MongoDB to match exactly what
-// each schema declares — dropping anything not declared (e.g. a stale
-// unique index left over from an earlier iteration of a schema, or from an
-// unrelated collection that happened to share this database) and building
-// anything that's missing. deleteMany() in wipe() only clears documents, it
-// never touches indexes, so a rogue leftover index would otherwise survive
-// every re-seed and keep breaking inserts (e.g. E11000 duplicate key errors
-// on a field like "bookingId" that no current schema even defines).
 async function syncAllIndexes() {
   const models: mongoose.Model<any>[] = [
     UserModel,
@@ -99,8 +91,6 @@ async function syncAllIndexes() {
   }
 }
 
-// Mirrors GamificationService.awardStampForAttendance without needing a full
-// Nest app context — the seed script talks to Mongoose directly.
 async function awardStamp(
   participantId: mongoose.Types.ObjectId,
   cohortId: mongoose.Types.ObjectId,
@@ -163,11 +153,6 @@ async function seed() {
   });
   console.log('Created super admin:', adminUser.email);
 
-  // In the real app the coordinator below would be created BY the super
-  // admin via POST /api/users (that's the whole point of the admin role —
-  // bootstrapping the first coordinator). The seed script creates it
-  // directly for demo convenience, but the relationship is the same one
-  // the UI enforces: only an admin account can mint a coordinator account.
   const coordinatorUser = await UserModel.create({
     name: 'Amara Okafor',
     email: 'coordinator@profitandplay.org',
@@ -356,7 +341,78 @@ async function seed() {
   });
   console.log('Created showcase event.');
 
-  console.log('\nSeed complete.\n');
+  // --- Post-seed verification ---
+  // Every 'participant' and 'partner' User row created above is supposed to
+  // have a matching Participant/PartnerOrg document whose `userId` points
+  // back at it — that link is exactly what /api/participants/me and
+  // /api/partner-orgs/me depend on to log someone in successfully. Rather
+  // than just trust that every create() above worked, re-query the database
+  // for each one and prove it. If this ever prints a MISSING line, that
+  // account will reproduce the "profile not found" login error, and this
+  // tells you exactly which one and why — instead of finding out later,
+  // silently, at login time.
+  console.log('\nVerifying account ↔ profile links...');
+  let verificationFailed = false;
+
+  const partnerCheck = await PartnerOrgModel.findOne({
+    userId: partnerUser._id,
+  });
+  if (partnerCheck) {
+    console.log(`  OK      partner  ${partnerUser.email}`);
+  } else {
+    verificationFailed = true;
+    console.error(
+      `  MISSING partner  ${partnerUser.email} — User exists (id ${partnerUser._id}) but no PartnerOrg document has this userId.`,
+    );
+  }
+
+  const parentCheck = await ParentModel.findOne({ userId: parentUser._id });
+  if (parentCheck) {
+    console.log(`  OK      parent   ${parentUser.email}`);
+  } else {
+    verificationFailed = true;
+    console.error(
+      `  MISSING parent   ${parentUser.email} — User exists (id ${parentUser._id}) but no Parent document has this userId.`,
+    );
+  }
+
+  for (const s of participantSeeds) {
+    const emailSlug = s.name.toLowerCase().replace(/\s+/g, '.');
+    const email = `${emailSlug}@example.com`;
+    const seededUser = await UserModel.findOne({ email });
+    if (!seededUser) {
+      verificationFailed = true;
+      console.error(`  MISSING user     ${email} — no User document at all.`);
+      continue;
+    }
+    const linked = await ParticipantModel.findOne({
+      userId: seededUser._id,
+    });
+    if (linked) {
+      console.log(`  OK      participant ${email}`);
+    } else {
+      verificationFailed = true;
+      console.error(
+        `  MISSING participant ${email} — User exists (id ${seededUser._id}) but no Participant document has this userId.`,
+      );
+    }
+  }
+
+  if (verificationFailed) {
+    console.error(
+      '\nSeed verification FAILED — one or more accounts above have no linked profile document.\n' +
+        'Those specific accounts will fail to log in with a "profile not found" error.\n' +
+        'This points to a database-level issue (e.g. a unique-index conflict, or the API server\n' +
+        'and this script connecting to two different MONGODB_URI values) rather than the seed\n' +
+        'data itself — the create() calls above ran without throwing, but the link did not persist.\n',
+    );
+    await mongoose.connection.close();
+    process.exit(1);
+  }
+
+  console.log('All account ↔ profile links verified OK.\n');
+
+  console.log('Seed complete.\n');
   console.log('Demo credentials (all use password: ' + PASSWORD + '):');
   console.log(`  Admin:       ${adminUser.email}`);
   console.log(`  Coordinator: ${coordinatorUser.email}`);
