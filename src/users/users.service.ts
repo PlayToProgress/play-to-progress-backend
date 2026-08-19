@@ -69,6 +69,20 @@ export class UsersService {
 
     let profile: unknown = null;
 
+    // Every sub-document created (or existing document mutated) while
+    // building the profile is tracked here so a failure partway through can
+    // undo *everything* that happened in this request — not just the User
+    // row. Without this, a failure on, say, the JourneyCard step after the
+    // Participant had already been created would previously delete only the
+    // User, leaving an orphaned Participant behind with a userId pointing at
+    // an account that no longer exists — which then can never be logged
+    // into or reliably recreated against the same email.
+    let createdParticipantId: unknown = null;
+    let createdJourneyCardId: unknown = null;
+    let createdPartnerOrgId: unknown = null;
+    let createdParentId: unknown = null;
+    let linkedExistingParentId: string | undefined;
+
     try {
       if (dto.role === 'participant') {
         if (!dto.age || !dto.emergencyContact || !dto.cohortId) {
@@ -88,20 +102,25 @@ export class UsersService {
           partnerOrgId: dto.partnerOrgId,
           parentId: dto.parentId,
         });
-        await this.journeyCardModel.create({
+        createdParticipantId = participant._id;
+
+        const journeyCard = await this.journeyCardModel.create({
           participantId: participant._id,
           cohortId: dto.cohortId,
           stamps: [],
           stampCount: 0,
         });
+        createdJourneyCardId = journeyCard._id;
+
         if (dto.parentId) {
           await this.parentModel.findByIdAndUpdate(dto.parentId, {
             $addToSet: { participantIds: participant._id },
           });
+          linkedExistingParentId = dto.parentId;
         }
         profile = participant;
       } else if (dto.role === 'partner') {
-        profile = await this.partnerOrgModel.create({
+        const partnerOrg = await this.partnerOrgModel.create({
           userId: user._id,
           name: dto.name,
           venueType: dto.venueType,
@@ -109,18 +128,40 @@ export class UsersService {
           description: dto.description,
           photoUrl: dto.photoUrl,
         });
+        createdPartnerOrgId = partnerOrg._id;
+        profile = partnerOrg;
       } else if (dto.role === 'parent') {
-        profile = await this.parentModel.create({
+        const parent = await this.parentModel.create({
           userId: user._id,
           name: dto.name,
           participantIds: dto.participantIds ?? [],
         });
+        createdParentId = parent._id;
+        profile = parent;
       }
       // 'admin' and 'coordinator' roles have no separate profile document —
       // just the User row, same as today.
     } catch (err) {
-      // Roll back the auth account if profile creation failed, so we never
-      // leave an orphaned login with no matching participant/partner/parent record.
+      // Roll back everything created (or mutated) during this attempt, so we
+      // never leave an orphaned profile document, journey card, or parent
+      // link behind with no matching login.
+      if (linkedExistingParentId && createdParticipantId) {
+        await this.parentModel.findByIdAndUpdate(linkedExistingParentId, {
+          $pull: { participantIds: createdParticipantId },
+        });
+      }
+      if (createdJourneyCardId) {
+        await this.journeyCardModel.findByIdAndDelete(createdJourneyCardId);
+      }
+      if (createdParticipantId) {
+        await this.participantModel.findByIdAndDelete(createdParticipantId);
+      }
+      if (createdPartnerOrgId) {
+        await this.partnerOrgModel.findByIdAndDelete(createdPartnerOrgId);
+      }
+      if (createdParentId) {
+        await this.parentModel.findByIdAndDelete(createdParentId);
+      }
       await this.userModel.findByIdAndDelete(user._id);
       throw err;
     }

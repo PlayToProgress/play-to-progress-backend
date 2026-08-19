@@ -341,7 +341,78 @@ async function seed() {
   });
   console.log('Created showcase event.');
 
-  console.log('\nSeed complete.\n');
+  // --- Post-seed verification ---
+  // Every 'participant' and 'partner' User row created above is supposed to
+  // have a matching Participant/PartnerOrg document whose `userId` points
+  // back at it — that link is exactly what /api/participants/me and
+  // /api/partner-orgs/me depend on to log someone in successfully. Rather
+  // than just trust that every create() above worked, re-query the database
+  // for each one and prove it. If this ever prints a MISSING line, that
+  // account will reproduce the "profile not found" login error, and this
+  // tells you exactly which one and why — instead of finding out later,
+  // silently, at login time.
+  console.log('\nVerifying account ↔ profile links...');
+  let verificationFailed = false;
+
+  const partnerCheck = await PartnerOrgModel.findOne({
+    userId: partnerUser._id,
+  });
+  if (partnerCheck) {
+    console.log(`  OK      partner  ${partnerUser.email}`);
+  } else {
+    verificationFailed = true;
+    console.error(
+      `  MISSING partner  ${partnerUser.email} — User exists (id ${partnerUser._id}) but no PartnerOrg document has this userId.`,
+    );
+  }
+
+  const parentCheck = await ParentModel.findOne({ userId: parentUser._id });
+  if (parentCheck) {
+    console.log(`  OK      parent   ${parentUser.email}`);
+  } else {
+    verificationFailed = true;
+    console.error(
+      `  MISSING parent   ${parentUser.email} — User exists (id ${parentUser._id}) but no Parent document has this userId.`,
+    );
+  }
+
+  for (const s of participantSeeds) {
+    const emailSlug = s.name.toLowerCase().replace(/\s+/g, '.');
+    const email = `${emailSlug}@example.com`;
+    const seededUser = await UserModel.findOne({ email });
+    if (!seededUser) {
+      verificationFailed = true;
+      console.error(`  MISSING user     ${email} — no User document at all.`);
+      continue;
+    }
+    const linked = await ParticipantModel.findOne({
+      userId: seededUser._id,
+    });
+    if (linked) {
+      console.log(`  OK      participant ${email}`);
+    } else {
+      verificationFailed = true;
+      console.error(
+        `  MISSING participant ${email} — User exists (id ${seededUser._id}) but no Participant document has this userId.`,
+      );
+    }
+  }
+
+  if (verificationFailed) {
+    console.error(
+      '\nSeed verification FAILED — one or more accounts above have no linked profile document.\n' +
+        'Those specific accounts will fail to log in with a "profile not found" error.\n' +
+        'This points to a database-level issue (e.g. a unique-index conflict, or the API server\n' +
+        'and this script connecting to two different MONGODB_URI values) rather than the seed\n' +
+        'data itself — the create() calls above ran without throwing, but the link did not persist.\n',
+    );
+    await mongoose.connection.close();
+    process.exit(1);
+  }
+
+  console.log('All account ↔ profile links verified OK.\n');
+
+  console.log('Seed complete.\n');
   console.log('Demo credentials (all use password: ' + PASSWORD + '):');
   console.log(`  Admin:       ${adminUser.email}`);
   console.log(`  Coordinator: ${coordinatorUser.email}`);
