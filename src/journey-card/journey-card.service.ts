@@ -10,6 +10,7 @@ import { Participant } from '../schemas/participant.schema';
 import { PartnerOrg } from '../schemas/partner-org.schema';
 import { Parent } from '../schemas/parent.schema';
 import { AuthUser } from '../common/decorators/current-user.decorator';
+import { toObjectId } from '../common/to-object-id';
 
 @Injectable()
 export class JourneyCardService {
@@ -21,7 +22,7 @@ export class JourneyCardService {
   ) {}
 
   async findMine(userId: string) {
-    const me = await this.participantModel.findOne({ userId });
+    const me = await this.participantModel.findOne({ userId: toObjectId(userId) });
     if (!me) throw new NotFoundException('Participant profile not found.');
     return this.journeyCardModel.findOne({ participantId: me._id }).lean();
   }
@@ -40,7 +41,7 @@ export class JourneyCardService {
     if (completedOnly) filter.rewardUnlocked = true;
 
     if (user.role === 'partner') {
-      const org = await this.partnerOrgModel.findOne({ userId: user.id });
+      const org = await this.partnerOrgModel.findOne({ userId: toObjectId(user.id) });
       if (!org) return [];
       const venueParticipants = await this.participantModel
         .find({ partnerOrgId: org._id })
@@ -52,7 +53,7 @@ export class JourneyCardService {
           : { $in: [] } // requested a participant outside their venue — return nothing
         : { $in: venueIds };
     } else if (user.role === 'parent') {
-      const parent = await this.parentModel.findOne({ userId: user.id });
+      const parent = await this.parentModel.findOne({ userId: toObjectId(user.id) });
       if (!parent) return [];
       const childIds = parent.participantIds.map((id) => id.toString());
       filter.participantId = participantId

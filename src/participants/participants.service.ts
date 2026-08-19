@@ -10,6 +10,7 @@ import { PartnerOrg } from '../schemas/partner-org.schema';
 import { Parent } from '../schemas/parent.schema';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { UpdateParticipantDto } from './dto/update-participant.dto';
+import { toObjectId } from '../common/to-object-id';
 
 @Injectable()
 export class ParticipantsService {
@@ -26,15 +27,15 @@ export class ParticipantsService {
     if (user.role === 'coordinator') {
       // full visibility
     } else if (user.role === 'partner') {
-      const org = await this.partnerOrgModel.findOne({ userId: user.id });
+      const org = await this.partnerOrgModel.findOne({ userId: toObjectId(user.id) });
       if (!org) return [];
       filter.partnerOrgId = org._id;
     } else if (user.role === 'parent') {
-      const parent = await this.parentModel.findOne({ userId: user.id });
+      const parent = await this.parentModel.findOne({ userId: toObjectId(user.id) });
       if (!parent) return [];
       filter._id = { $in: parent.participantIds };
     } else if (user.role === 'participant') {
-      filter.userId = user.id;
+      filter.userId = toObjectId(user.id);
     }
 
     return this.participantModel
@@ -46,7 +47,7 @@ export class ParticipantsService {
 
   async findMe(userId: string) {
     const participant = await this.participantModel
-      .findOne({ userId })
+      .findOne({ userId: toObjectId(userId) })
       .populate('cohortId', 'name status startDate endDate numSessions')
       .lean();
     if (!participant)
@@ -64,13 +65,13 @@ export class ParticipantsService {
       return participant.userId.toString() === user.id;
     }
     if (user.role === 'partner') {
-      const org = await this.partnerOrgModel.findOne({ userId: user.id });
+      const org = await this.partnerOrgModel.findOne({ userId: toObjectId(user.id) });
       return (
         !!org && participant.partnerOrgId?.toString() === org._id.toString()
       );
     }
     if (user.role === 'parent') {
-      const parent = await this.parentModel.findOne({ userId: user.id });
+      const parent = await this.parentModel.findOne({ userId: toObjectId(user.id) });
       return (
         !!parent &&
         parent.participantIds.some((id) => id.toString() === participantId)

@@ -8,6 +8,7 @@ import { Parent } from '../schemas/parent.schema';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { AwardBadgeDto } from './dto/award-badge.dto';
 import { labelForRecognitionBadge } from './recognition-badges';
+import { toObjectId } from '../common/to-object-id';
 
 @Injectable()
 export class BadgesService {
@@ -23,7 +24,7 @@ export class BadgesService {
   // family's badges by simply passing a different id in the query string.
   async findScoped(user: AuthUser, participantId?: string) {
     if (user.role === 'participant') {
-      const me = await this.participantModel.findOne({ userId: user.id });
+      const me = await this.participantModel.findOne({ userId: toObjectId(user.id) });
       if (!me) return [];
       return this.badgeModel
         .find({ participantId: me._id })
@@ -32,7 +33,7 @@ export class BadgesService {
     }
 
     if (user.role === 'partner') {
-      const org = await this.partnerOrgModel.findOne({ userId: user.id });
+      const org = await this.partnerOrgModel.findOne({ userId: toObjectId(user.id) });
       if (!org) return [];
       const venueParticipants = await this.participantModel
         .find({ partnerOrgId: org._id })
@@ -46,7 +47,7 @@ export class BadgesService {
     }
 
     if (user.role === 'parent') {
-      const parent = await this.parentModel.findOne({ userId: user.id });
+      const parent = await this.parentModel.findOne({ userId: toObjectId(user.id) });
       if (!parent) return [];
       const childIds = parent.participantIds.map((id) => id.toString());
       if (participantId && !childIds.includes(participantId)) return [];

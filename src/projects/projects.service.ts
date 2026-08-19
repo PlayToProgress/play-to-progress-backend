@@ -12,6 +12,7 @@ import { Parent } from '../schemas/parent.schema';
 import { Badge } from '../schemas/badge.schema';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import { toObjectId } from '../common/to-object-id';
 
 @Injectable()
 export class ProjectsService {
@@ -28,10 +29,10 @@ export class ProjectsService {
     if (participantId) filter.participantId = participantId;
 
     if (user.role === 'participant') {
-      const me = await this.participantModel.findOne({ userId: user.id });
+      const me = await this.participantModel.findOne({ userId: toObjectId(user.id) });
       filter.participantId = me?._id;
     } else if (user.role === 'partner') {
-      const org = await this.partnerOrgModel.findOne({ userId: user.id });
+      const org = await this.partnerOrgModel.findOne({ userId: toObjectId(user.id) });
       const venueParticipants = org
         ? await this.participantModel
             .find({ partnerOrgId: org._id })
@@ -39,7 +40,7 @@ export class ProjectsService {
         : [];
       filter.participantId = { $in: venueParticipants.map((p) => p._id) };
     } else if (user.role === 'parent') {
-      const parent = await this.parentModel.findOne({ userId: user.id });
+      const parent = await this.parentModel.findOne({ userId: toObjectId(user.id) });
       filter.participantId = { $in: parent?.participantIds ?? [] };
     }
 
@@ -51,7 +52,7 @@ export class ProjectsService {
   }
 
   async create(user: AuthUser, dto: CreateProjectDto) {
-    const me = await this.participantModel.findOne({ userId: user.id });
+    const me = await this.participantModel.findOne({ userId: toObjectId(user.id) });
     if (!me) throw new NotFoundException('Participant profile not found.');
 
     const { submit, ...rest } = dto;
@@ -91,7 +92,7 @@ export class ProjectsService {
           : project.approvedBy;
       project.approvedAt = new Date();
     } else {
-      const me = await this.participantModel.findOne({ userId: user.id });
+      const me = await this.participantModel.findOne({ userId: toObjectId(user.id) });
       if (!me || me._id.toString() !== project.participantId.toString()) {
         throw new ForbiddenException('Forbidden');
       }

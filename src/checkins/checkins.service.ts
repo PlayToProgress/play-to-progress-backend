@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { CheckIn } from '../schemas/check-in.schema';
 import { Participant } from '../schemas/participant.schema';
 import { CreateCheckInDto } from './dto/create-checkin.dto';
+import { toObjectId } from '../common/to-object-id';
 
 // Mood 1-2 is treated as a wellbeing concern and flagged for coordinator review (NF-07).
 const FLAG_THRESHOLD = 2;
@@ -16,7 +17,7 @@ export class CheckinsService {
   ) {}
 
   async create(userId: string, dto: CreateCheckInDto) {
-    const me = await this.participantModel.findOne({ userId });
+    const me = await this.participantModel.findOne({ userId: toObjectId(userId) });
     if (!me) throw new NotFoundException('Participant profile not found.');
 
     return this.checkInModel.create({
