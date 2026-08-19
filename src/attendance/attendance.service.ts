@@ -8,6 +8,7 @@ import { Parent } from '../schemas/parent.schema';
 import { GamificationService } from '../gamification/gamification.service';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { AuthUser } from '../common/decorators/current-user.decorator';
+import { toObjectId } from '../common/to-object-id';
 
 @Injectable()
 export class AttendanceService {
@@ -33,7 +34,7 @@ export class AttendanceService {
     if (filters.participantId) filter.participantId = filters.participantId;
 
     if (user.role === 'partner') {
-      const org = await this.partnerOrgModel.findOne({ userId: user.id });
+      const org = await this.partnerOrgModel.findOne({ userId: toObjectId(user.id) });
       const venueParticipants = org
         ? await this.participantModel
             .find({ partnerOrgId: org._id })
@@ -41,10 +42,10 @@ export class AttendanceService {
         : [];
       filter.participantId = { $in: venueParticipants.map((p) => p._id) };
     } else if (user.role === 'parent') {
-      const parent = await this.parentModel.findOne({ userId: user.id });
+      const parent = await this.parentModel.findOne({ userId: toObjectId(user.id) });
       filter.participantId = { $in: parent?.participantIds ?? [] };
     } else if (user.role === 'participant') {
-      const me = await this.participantModel.findOne({ userId: user.id });
+      const me = await this.participantModel.findOne({ userId: toObjectId(user.id) });
       filter.participantId = me?._id;
     }
 
